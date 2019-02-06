@@ -2,6 +2,7 @@ package ttl
 
 import (
 	"fmt"
+	"log"
 	"errors"
 	"time"
 	"context"
@@ -79,10 +80,10 @@ func NewTTLMiddleWare(ttlFieldName string, deleteAtFieldName string, activeField
 		go func() {
 			for _ = range ticker.C {
 				q, err := query.New("", fmt.Sprintf("{%s: {$lte: \"%d\"}}", deleteAtFieldName, time.Now().Local().Unix()), "", nil)
-				if err != nil {
-					fmt.Println(err)
+				if err == nil {
+					rsc.Clear(context.TODO(), q)
 				}
-				rsc.Clear(context.TODO(), q)
+				// TODO: What to do if error?
 			}
 		}()
 	}
