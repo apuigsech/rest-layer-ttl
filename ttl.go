@@ -2,7 +2,6 @@ package ttl
 
 import (
 	"fmt"
-	"log"
 	"errors"
 	"time"
 	"context"
