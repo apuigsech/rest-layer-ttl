@@ -23,11 +23,11 @@ var (
 
 	DeleteAtField = schema.Field{
 		Description: "Moment in wich item will be deleted",
-		Required: true,
-		Default: time.Unix(1<<63-1, 0).Unix(),
+		Required: false,
+		Default: time.Date(int(9999), time.December, int(31), int(0), int(0), int(0), int(0), time.UTC).Truncate(time.Microsecond),
 		Filterable: true,
 		Sortable: true,
-		Validator: &schema.Integer{},
+		Validator: &schema.Time{},
 	}
 
 	ActiveField = schema.Field{
@@ -73,16 +73,18 @@ func Int64(value interface{}) (int64_val int64, int64_ok bool) {
 
 
 func NewTTLMiddleWare(ttlFieldName string, deleteAtFieldName string, activeFieldName string, autoDeleteItems bool, interval int, rsc *resource.Resource) (TTLMiddleWare) {
-	if interval > 0  && autoDeleteItems {
+	if interval > 0 && autoDeleteItems {
 		ticker := time.NewTicker(time.Duration(interval) * time.Second)
 
 		go func() {
 			for _ = range ticker.C {
-				q, err := query.New("", fmt.Sprintf("{%s: {$lte: \"%d\"}}", deleteAtFieldName, time.Now().Local().Unix()), "", nil)
-				if err == nil {
-					rsc.Clear(context.TODO(), q)
+				queryStr := fmt.Sprintf("{%s: {$lte: \"%s\"}}", deleteAtFieldName, time.Now().UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano))
+				q, err := query.New("", queryStr, "", nil)
+				if err != nil {
+					// TODO: What to do if error?
+				} else {
+					rsc.Clear(context.Background(), q)
 				}
-				// TODO: What to do if error?
 			}
 		}()
 	}
@@ -106,7 +108,7 @@ func (mw TTLMiddleWare) OnInsert(ctx context.Context, items []*resource.Item) er
 		}
 
 		if ttl > 0 {
-			i.Payload[mw.DeleteAtFieldName] = time.Now().Local().Add(time.Duration(ttl) * time.Second).Unix()
+			i.Payload[mw.DeleteAtFieldName] = time.Now().UTC().Add(time.Duration(ttl) * time.Second).Truncate(time.Microsecond)
 		}
 	}
 
@@ -134,8 +136,9 @@ func (mw TTLMiddleWare) OnUpdate(ctx context.Context, item *resource.Item, origi
 			ttl = ttl_original
 		}
 	}
-
-	item.Payload[mw.DeleteAtFieldName] = time.Now().Local().Add(time.Duration(ttl) * time.Second).Unix()
+	if ttl_item > 0 {
+		item.Payload[mw.DeleteAtFieldName] = time.Now().UTC().Add(time.Duration(ttl) * time.Second).Truncate(time.Microsecond)
+	}
 
 	return nil
 }
@@ -144,7 +147,7 @@ func (mw TTLMiddleWare) OnUpdate(ctx context.Context, item *resource.Item, origi
 func (mw TTLMiddleWare) OnFound(ctx context.Context, query *query.Query, list **resource.ItemList, err *error) {
 	if !mw.AutoDeleteItems {
 		for _, i := range (*list).Items {
-			if i.Payload[mw.DeleteAtFieldName].(int64) <= time.Now().Local().Unix() {
+			if i.Payload[mw.DeleteAtFieldName].(time.Time).UnixNano() < time.Now().UTC().Truncate(time.Microsecond).UnixNano() {
 				i.Payload[mw.ActiveFieldName] = false
 				mw.resource.Update(ctx, i, i)
 			}
@@ -155,7 +158,7 @@ func (mw TTLMiddleWare) OnFound(ctx context.Context, query *query.Query, list **
 func (mw TTLMiddleWare) OnGot(ctx context.Context, item **resource.Item, err *error) {
 	i := *item
 	if !mw.AutoDeleteItems {
-		if i.Payload[mw.DeleteAtFieldName].(int64) <= time.Now().Local().Unix() {
+		if i.Payload[mw.DeleteAtFieldName].(time.Time).UnixNano() < time.Now().UTC().Truncate(time.Microsecond).UnixNano() {
 			i.Payload[mw.ActiveFieldName] = false
 			mw.resource.Update(ctx, i, i)
 		}
