@@ -145,7 +145,7 @@ func (mw TTLMiddleWare) OnUpdate(ctx context.Context, item *resource.Item, origi
 
 
 func (mw TTLMiddleWare) OnFound(ctx context.Context, query *query.Query, list **resource.ItemList, err *error) {
-	if !mw.AutoDeleteItems {
+	if !mw.AutoDeleteItems && *list != nil {
 		for _, i := range (*list).Items {
 			if i.Payload[mw.DeleteAtFieldName].(time.Time).UnixNano() < time.Now().UTC().Truncate(time.Microsecond).UnixNano() {
 				i.Payload[mw.ActiveFieldName] = false
